@@ -47,213 +47,251 @@ resource "azurerm_kubernetes_cluster" "aks" {
   }
 }
 
-resource "azurerm_log_analytics_workspace" "workspace" {
-  name                = "k8s-workspace-${random_id.workspace.hex}"
-  location            = "${azurerm_resource_group.cluster.location}"
-  resource_group_name = "${azurerm_resource_group.cluster.name}"
-  sku                 = "Free"
-}
+# resource "azurerm_log_analytics_workspace" "workspace" {
+#   name                = "k8s-workspace-${random_id.workspace.hex}"
+#   location            = "${azurerm_resource_group.cluster.location}"
+#   resource_group_name = "${azurerm_resource_group.cluster.name}"
+#   sku                 = "Free"
+# }
 
-resource "azurerm_log_analytics_solution" "container_monitoring" {
-  location              = "${azurerm_resource_group.cluster.location}"
-  resource_group_name   = "${azurerm_resource_group.cluster.name}"
-  workspace_resource_id = "${azurerm_log_analytics_workspace.workspace.id}"
-  workspace_name        = "${azurerm_log_analytics_workspace.workspace.name}"
-  solution_name         = "Containers"
 
-  plan {
-    publisher = "Microsoft"
-    product   = "OMSGallery/Containers"
-  }
-}
+# resource "azurerm_log_analytics_solution" "container_monitoring" {
+#   location              = "${azurerm_resource_group.cluster.location}"
+#   resource_group_name   = "${azurerm_resource_group.cluster.name}"
+#   workspace_resource_id = "${azurerm_log_analytics_workspace.workspace.id}"
+#   workspace_name        = "${azurerm_log_analytics_workspace.workspace.name}"
+#   solution_name         = "Containers"
 
-resource "random_id" "redis" {
-  keepers = {
-    azi_id = 1
-  }
 
-  byte_length = 8
-}
+#   plan {
+#     publisher = "Microsoft"
+#     product   = "OMSGallery/Containers"
+#   }
+# }
 
-resource "azurerm_redis_cache" "redis" {
-  name                = "redis${random_id.redis.hex}"
-  location            = "${azurerm_resource_group.cluster.location}"
-  resource_group_name = "${azurerm_resource_group.cluster.name}"
-  capacity            = 0
-  family              = "C"
-  sku_name            = "Basic"
-  enable_non_ssl_port = false
 
-  redis_configuration {
-    maxclients = 256
-  }
-}
+# resource "random_id" "redis" {
+#   keepers = {
+#     azi_id = 1
+#   }
 
-provider "kubernetes" {
-  host = "${azurerm_kubernetes_cluster.aks.kube_config.0.host}"
 
-  client_certificate     = "${base64decode(azurerm_kubernetes_cluster.aks.kube_config.0.client_certificate)}"
-  client_key             = "${base64decode(azurerm_kubernetes_cluster.aks.kube_config.0.client_key)}"
-  cluster_ca_certificate = "${base64decode(azurerm_kubernetes_cluster.aks.kube_config.0.cluster_ca_certificate)}"
-}
+#   byte_length = 8
+# }
 
-resource "kubernetes_secret" "redis_secret" {
-  metadata {
-    name = "rediskeys"
-  }
 
-  data {
-    host = "${azurerm_redis_cache.redis.hostname}"
-    port = "${azurerm_redis_cache.redis.port}"
-    key  = "${azurerm_redis_cache.redis.primary_access_key}"
-  }
-}
+# resource "azurerm_redis_cache" "redis" {
+#   name                = "redis${random_id.redis.hex}"
+#   location            = "${azurerm_resource_group.cluster.location}"
+#   resource_group_name = "${azurerm_resource_group.cluster.name}"
+#   capacity            = 0
+#   family              = "C"
+#   sku_name            = "Basic"
+#   enable_non_ssl_port = false
 
-resource "kubernetes_namespace" "monitoring" {
-  metadata {
-    name = "monitoring"
-  }
-}
 
-resource "kubernetes_secret" "log_analytics_secret" {
-  metadata {
-    name      = "omsagentkeys"
-    namespace = "${kubernetes_namespace.monitoring.metadata.0.name}"
-  }
+#   redis_configuration {
+#     maxclients = 256
+#   }
+# }
 
-  data {
-    workspace_id  = "${azurerm_log_analytics_workspace.workspace.workspace_id}"
-    workspace_key = "${azurerm_log_analytics_workspace.workspace.primary_shared_key}"
-  }
-}
 
-resource "kubernetes_daemonset" "container_agent" {
-  metadata {
-    name      = "omsagent"
-    namespace = "${kubernetes_namespace.monitoring.metadata.0.name}"
-  }
+# provider "kubernetes" {
+#   host = "${azurerm_kubernetes_cluster.aks.kube_config.0.host}"
 
-  spec {
-    selector {
-      agentVersion          = "1.4.0-12"
-      dockerProviderVersion = "1.0.0-25"
-      app                   = "omsagent"
-    }
 
-    template {
-      metadata {
-        labels {
-          agentVersion          = "1.4.0-12"
-          dockerProviderVersion = "1.0.0-25"
-          app                   = "omsagent"
-        }
-      }
+#   client_certificate     = "${base64decode(azurerm_kubernetes_cluster.aks.kube_config.0.client_certificate)}"
+#   client_key             = "${base64decode(azurerm_kubernetes_cluster.aks.kube_config.0.client_key)}"
+#   cluster_ca_certificate = "${base64decode(azurerm_kubernetes_cluster.aks.kube_config.0.cluster_ca_certificate)}"
+# }
 
-      spec {
-        volume {
-          name = "docker-sock"
 
-          host_path {
-            path = "/var/run/docker.sock"
-          }
-        }
+# resource "kubernetes_secret" "redis_secret" {
+#   metadata {
+#     name = "rediskeys"
+#   }
 
-        volume {
-          name = "container-hostname"
 
-          host_path {
-            path = "/etc/hostname"
-          }
-        }
+#   data {
+#     host = "${azurerm_redis_cache.redis.hostname}"
+#     port = "${azurerm_redis_cache.redis.port}"
+#     key  = "${azurerm_redis_cache.redis.primary_access_key}"
+#   }
+# }
 
-        volume {
-          name = "host-log"
 
-          host_path {
-            path = "/var/log"
-          }
-        }
+# resource "kubernetes_namespace" "monitoring" {
+#   metadata {
+#     name = "monitoring"
+#   }
+# }
 
-        volume {
-          name = "container-log"
 
-          host_path {
-            path = "/var/lib/docker/containers/"
-          }
-        }
+# resource "kubernetes_secret" "log_analytics_secret" {
+#   metadata {
+#     name      = "omsagentkeys"
+#     namespace = "${kubernetes_namespace.monitoring.metadata.0.name}"
+#   }
 
-        container {
-          name              = "omsagent"
-          image             = "microsoft/oms"
-          image_pull_policy = "Always"
 
-          security_context {
-            privileged = true
-          }
+#   data {
+#     workspace_id  = "${azurerm_log_analytics_workspace.workspace.workspace_id}"
+#     workspace_key = "${azurerm_log_analytics_workspace.workspace.primary_shared_key}"
+#   }
+# }
 
-          port {
-            container_port = 25225
-            protocol       = "TCP"
-          }
 
-          port {
-            container_port = 25224
-            protocol       = "UDP"
-          }
+# resource "kubernetes_daemonset" "container_agent" {
+#   metadata {
+#     name      = "omsagent"
+#     namespace = "${kubernetes_namespace.monitoring.metadata.0.name}"
+#   }
 
-          volume_mount {
-            name       = "docker-sock"
-            mount_path = "/var/run/docker.sock"
-          }
 
-          volume_mount {
-            mount_path = "/var/log"
-            name       = "host-log"
-          }
+#   spec {
+#     selector {
+#       agentVersion          = "1.4.0-12"
+#       dockerProviderVersion = "1.0.0-25"
+#       app                   = "omsagent"
+#     }
 
-          volume_mount {
-            mount_path = "/var/lib/docker/containers/"
-            name       = "container-log"
-          }
 
-          volume_mount {
-            mount_path = "/var/opt/microsoft/omsagent/state/containerhostname"
-            name       = "container-hostname"
-          }
+#     template {
+#       metadata {
+#         labels {
+#           agentVersion          = "1.4.0-12"
+#           dockerProviderVersion = "1.0.0-25"
+#           app                   = "omsagent"
+#         }
+#       }
 
-          liveness_probe {
-            exec {
-              command = ["/bin/bash", "-c", "ps -ef | grep omsagent | grep -v \"grep\""]
-            }
 
-            initial_delay_seconds = 60
-            period_seconds        = 60
-          }
+#       spec {
+#         volume {
+#           name = "docker-sock"
 
-          env = [
-            {
-              name = "WSID"
 
-              value_from {
-                secret_key_ref {
-                  name = "${kubernetes_secret.log_analytics_secret.metadata.0.name}"
-                  key  = "workspace_id"
-                }
-              }
-            },
-            {
-              name = "KEY"
+#           host_path {
+#             path = "/var/run/docker.sock"
+#           }
+#         }
 
-              value_from {
-                secret_key_ref {
-                  name = "${kubernetes_secret.log_analytics_secret.metadata.0.name}"
-                  key  = "workspace_key"
-                }
-              }
-            },
-          ]
-        }
-      }
-    }
-  }
-}
+
+#         volume {
+#           name = "container-hostname"
+
+
+#           host_path {
+#             path = "/etc/hostname"
+#           }
+#         }
+
+
+#         volume {
+#           name = "host-log"
+
+
+#           host_path {
+#             path = "/var/log"
+#           }
+#         }
+
+
+#         volume {
+#           name = "container-log"
+
+
+#           host_path {
+#             path = "/var/lib/docker/containers/"
+#           }
+#         }
+
+
+#         container {
+#           name              = "omsagent"
+#           image             = "microsoft/oms"
+#           image_pull_policy = "Always"
+
+
+#           security_context {
+#             privileged = true
+#           }
+
+
+#           port {
+#             container_port = 25225
+#             protocol       = "TCP"
+#           }
+
+
+#           port {
+#             container_port = 25224
+#             protocol       = "UDP"
+#           }
+
+
+#           volume_mount {
+#             name       = "docker-sock"
+#             mount_path = "/var/run/docker.sock"
+#           }
+
+
+#           volume_mount {
+#             mount_path = "/var/log"
+#             name       = "host-log"
+#           }
+
+
+#           volume_mount {
+#             mount_path = "/var/lib/docker/containers/"
+#             name       = "container-log"
+#           }
+
+
+#           volume_mount {
+#             mount_path = "/var/opt/microsoft/omsagent/state/containerhostname"
+#             name       = "container-hostname"
+#           }
+
+
+#           liveness_probe {
+#             exec {
+#               command = ["/bin/bash", "-c", "ps -ef | grep omsagent | grep -v \"grep\""]
+#             }
+
+
+#             initial_delay_seconds = 60
+#             period_seconds        = 60
+#           }
+
+
+#           env = [
+#             {
+#               name = "WSID"
+
+
+#               value_from {
+#                 secret_key_ref {
+#                   name = "${kubernetes_secret.log_analytics_secret.metadata.0.name}"
+#                   key  = "workspace_id"
+#                 }
+#               }
+#             },
+#             {
+#               name = "KEY"
+
+
+#               value_from {
+#                 secret_key_ref {
+#                   name = "${kubernetes_secret.log_analytics_secret.metadata.0.name}"
+#                   key  = "workspace_key"
+#                 }
+#               }
+#             },
+#           ]
+#         }
+#       }
+#     }
+#   }
+# }
+
